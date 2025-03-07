@@ -488,6 +488,10 @@
 -(void)_changeCameraPosition: (NSString*)action requestMethod:(NSString *)requestMethod params:(NSDictionary *)json command:(CDVInvokedUrlCommand *)command {
 
   [[NSOperationQueue mainQueue] addOperationWithBlock:^{
+    // Log the input parameters for debugging
+    NSLog(@"[GoogleMaps] _changeCameraPosition - Action: %@, Method: %@, Params: %@", 
+          action, requestMethod, json);
+          
     __block double bearing;
     if ([json valueForKey:@"bearing"] && [json valueForKey:@"bearing"] != [NSNull null]) {
       bearing = [[json valueForKey:@"bearing"] doubleValue];
@@ -525,7 +529,10 @@
     UIEdgeInsets paddingUiEdgeInsets = UIEdgeInsetsMake(cameraPadding / scale, cameraPadding / scale, cameraPadding / scale, cameraPadding / scale);
 
     if ([json objectForKey:@"target"]) {
-      NSString *targetClsName = [[json objectForKey:@"target"] className];
+      id targetObject = [json objectForKey:@"target"];
+      NSString *targetClsName = [targetObject className];
+      NSLog(@"[GoogleMaps] Target object class: %@", targetClsName);
+      
       if ([targetClsName isEqualToString:@"__NSCFArray"] || [targetClsName isEqualToString:@"__NSArrayM"] ) {
         //--------------------------------------------
         //  cameraPosition.target = [
@@ -534,29 +541,42 @@
         //    new plugin.google.maps.LatLng()
         //  ]
         //---------------------------------------------
+        NSLog(@"[GoogleMaps] Processing array of coordinates, count: %lu", (unsigned long)[(NSArray*)targetObject count]);
+        
         int i = 0;
         NSArray *latLngList = [json objectForKey:@"target"];
         GMSMutablePath *path = [GMSMutablePath path];
         for (i = 0; i < [latLngList count]; i++) {
           latLng = [latLngList objectAtIndex:i];
+          NSLog(@"[GoogleMaps] Array item %d: %@", i, latLng);
+          
           if (latLng && [latLng isKindOfClass:[NSDictionary class]]) {
             id latValue = [latLng valueForKey:@"lat"];
             id lngValue = [latLng valueForKey:@"lng"];
+            NSLog(@"[GoogleMaps] latValue: %@, lngValue: %@", latValue, lngValue);
+            
             if (latValue != nil && lngValue != nil) {
               latitude = [latValue doubleValue];
               longitude = [lngValue doubleValue];
+              NSLog(@"[GoogleMaps] Adding point - lat: %f, lng: %f", latitude, longitude);
               [path addLatitude:latitude longitude:longitude];
+            } else {
+              NSLog(@"[GoogleMaps] WARNING: Skipping point with nil lat/lng values");
             }
+          } else {
+            NSLog(@"[GoogleMaps] WARNING: Invalid latLng object in array: %@", latLng);
           }
         }
         
         if ([path count] > 0) {
+          NSLog(@"[GoogleMaps] Created path with %lu points", (unsigned long)[path count]);
           cameraBounds = [[GMSCoordinateBounds alloc] initWithPath:path];
           //CLLocationCoordinate2D center = cameraBounds.center;
           
           cameraPosition = [self.mapCtrl.map cameraForBounds:cameraBounds insets:paddingUiEdgeInsets];
         } else {
           // Fallback if no valid coordinates were found in the array
+          NSLog(@"[GoogleMaps] WARNING: No valid coordinates in array, using current camera position");
           cameraPosition = [GMSCameraPosition cameraWithLatitude:self.mapCtrl.map.camera.target.latitude
                                                       longitude:self.mapCtrl.map.camera.target.longitude
                                                            zoom:zoom
@@ -567,12 +587,15 @@
         //------------------------------------------------------------------
         //  cameraPosition.target = new plugin.google.maps.LatLng();
         //------------------------------------------------------------------
-
+        NSLog(@"[GoogleMaps] Processing single coordinate");
         latLng = [json objectForKey:@"target"];
+        NSLog(@"[GoogleMaps] Target latLng: %@", latLng);
+        
         if (latLng && [latLng isKindOfClass:[NSDictionary class]] && 
             [latLng valueForKey:@"lat"] != nil && [latLng valueForKey:@"lng"] != nil) {
           latitude = [[latLng valueForKey:@"lat"] doubleValue];
           longitude = [[latLng valueForKey:@"lng"] doubleValue];
+          NSLog(@"[GoogleMaps] Using lat: %f, lng: %f", latitude, longitude);
           
           cameraPosition = [GMSCameraPosition cameraWithLatitude:latitude
                                                        longitude:longitude
@@ -581,6 +604,7 @@
                                                     viewingAngle:angle];
         } else {
           // Fallback if lat/lng values are missing or invalid
+          NSLog(@"[GoogleMaps] WARNING: Invalid single latLng, using current camera position");
           cameraPosition = [GMSCameraPosition cameraWithLatitude:self.mapCtrl.map.camera.target.latitude
                                                        longitude:self.mapCtrl.map.camera.target.longitude
                                                             zoom:zoom
@@ -589,6 +613,7 @@
         }
       }
     } else {
+      NSLog(@"[GoogleMaps] No target specified, using current camera position");
       cameraPosition = [GMSCameraPosition cameraWithLatitude:self.mapCtrl.map.camera.target.latitude
                                                    longitude:self.mapCtrl.map.camera.target.longitude
                                                         zoom:zoom
@@ -637,36 +662,63 @@
       }[CATransaction commit];
     }
     if ([action  isEqual: @"moveCamera"]) {
+      NSLog(@"[GoogleMaps] Executing moveCamera with position: %@", cameraPosition);
       [self.mapCtrl.map setCamera:cameraPosition];
 
       if (cameraBounds != nil){
+        NSLog(@"[GoogleMaps] Using cameraBounds, scheduling camera adjustment after delay");
         double delayInSeconds = 0.5;
         dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
         dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+          NSLog(@"[GoogleMaps] First delay callback - creating cameraPosition2");
+          
+          // Check if map control is still valid
+          if (self.mapCtrl == nil || self.mapCtrl.map == nil) {
+            NSLog(@"[GoogleMaps] ERROR: Map controller is null in delayed block!");
+            [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR 
+                                                                     messageAsString:@"Map controller is no longer valid"] 
+                                        callbackId:command.callbackId];
+            return;
+          }
+          
           GMSCameraPosition *cameraPosition2 = [GMSCameraPosition cameraWithLatitude:self.mapCtrl.map.camera.target.latitude
                                                                            longitude:self.mapCtrl.map.camera.target.longitude
                                                                                 zoom:self.mapCtrl.map.camera.zoom
                                                                              bearing:bearing
                                                                         viewingAngle:angle];
+          NSLog(@"[GoogleMaps] Created cameraPosition2: %@", cameraPosition2);
 
           if (self.isRemoved) {
+            NSLog(@"[GoogleMaps] Plugin was removed, sending error");
             [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR] callbackId:command.callbackId];
             return;
           }
+          
+          NSLog(@"[GoogleMaps] Setting camera to cameraPosition2");
           [self.mapCtrl.map setCamera:cameraPosition2];
+          
           dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+            NSLog(@"[GoogleMaps] Second delay callback - finalizing camera");
+            
+            // Check again if map control is still valid
+            if (self.mapCtrl == nil || self.mapCtrl.map == nil) {
+              NSLog(@"[GoogleMaps] ERROR: Map controller is null in second delayed block!");
+              [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR] callbackId:command.callbackId];
+              return;
+            }
+            
             GMSCoordinateBounds *bounds = [[GMSCoordinateBounds alloc] initWithRegion:self.mapCtrl.map.projection.visibleRegion];
             [self.mapCtrl.map cameraForBounds:bounds insets:paddingUiEdgeInsets];
             [self.mapCtrl.view setHidden:NO];
+            NSLog(@"[GoogleMaps] moveCamera completed successfully, sending result");
             [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
-
           });
-
+        });
       } else {
+        NSLog(@"[GoogleMaps] No cameraBounds, completing moveCamera immediately");
         [self.mapCtrl.view setHidden:NO];
         [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
       }
-
     }
   }];
 
