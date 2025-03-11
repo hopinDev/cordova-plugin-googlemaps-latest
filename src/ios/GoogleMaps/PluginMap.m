@@ -539,54 +539,29 @@
         GMSMutablePath *path = [GMSMutablePath path];
         for (i = 0; i < [latLngList count]; i++) {
           latLng = [latLngList objectAtIndex:i];
-          if (latLng && [latLng isKindOfClass:[NSDictionary class]]) {
-            id latValue = [latLng valueForKey:@"lat"];
-            id lngValue = [latLng valueForKey:@"lng"];
-            if (latValue != nil && lngValue != nil) {
-              latitude = [latValue doubleValue];
-              longitude = [lngValue doubleValue];
-              [path addLatitude:latitude longitude:longitude];
-            }
-          }
+          latitude = [[latLng valueForKey:@"lat"] doubleValue];
+          longitude = [[latLng valueForKey:@"lng"] doubleValue];
+          [path addLatitude:latitude longitude:longitude];
         }
-        
-        if ([path count] > 0) {
-          cameraBounds = [[GMSCoordinateBounds alloc] initWithPath:path];
-          //CLLocationCoordinate2D center = cameraBounds.center;
-          
-          cameraPosition = [self.mapCtrl.map cameraForBounds:cameraBounds insets:paddingUiEdgeInsets];
-        } else {
-          // Fallback if no valid coordinates were found in the array
-          cameraPosition = [GMSCameraPosition cameraWithLatitude:self.mapCtrl.map.camera.target.latitude
-                                                      longitude:self.mapCtrl.map.camera.target.longitude
-                                                           zoom:zoom
-                                                        bearing:bearing
-                                                   viewingAngle:angle];
-        }
+
+        cameraBounds = [[GMSCoordinateBounds alloc] initWithPath:path];
+        //CLLocationCoordinate2D center = cameraBounds.center;
+
+        cameraPosition = [self.mapCtrl.map cameraForBounds:cameraBounds insets:paddingUiEdgeInsets];
       } else {
         //------------------------------------------------------------------
         //  cameraPosition.target = new plugin.google.maps.LatLng();
         //------------------------------------------------------------------
 
         latLng = [json objectForKey:@"target"];
-        if (latLng && [latLng isKindOfClass:[NSDictionary class]] && 
-            [latLng valueForKey:@"lat"] != nil && [latLng valueForKey:@"lng"] != nil) {
-          latitude = [[latLng valueForKey:@"lat"] doubleValue];
-          longitude = [[latLng valueForKey:@"lng"] doubleValue];
-          
-          cameraPosition = [GMSCameraPosition cameraWithLatitude:latitude
-                                                       longitude:longitude
-                                                            zoom:zoom
-                                                         bearing:bearing
-                                                    viewingAngle:angle];
-        } else {
-          // Fallback if lat/lng values are missing or invalid
-          cameraPosition = [GMSCameraPosition cameraWithLatitude:self.mapCtrl.map.camera.target.latitude
-                                                       longitude:self.mapCtrl.map.camera.target.longitude
-                                                            zoom:zoom
-                                                         bearing:bearing
-                                                    viewingAngle:angle];
-        }
+        latitude = [[latLng valueForKey:@"lat"] doubleValue];
+        longitude = [[latLng valueForKey:@"lng"] doubleValue];
+
+        cameraPosition = [GMSCameraPosition cameraWithLatitude:latitude
+                                                     longitude:longitude
+                                                          zoom:zoom
+                                                       bearing:bearing
+                                                  viewingAngle:angle];
       }
     } else {
       cameraPosition = [GMSCameraPosition cameraWithLatitude:self.mapCtrl.map.camera.target.latitude
@@ -661,6 +636,8 @@
             [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
 
           });
+
+        });
 
       } else {
         [self.mapCtrl.view setHidden:NO];
