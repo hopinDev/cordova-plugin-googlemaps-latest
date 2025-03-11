@@ -641,15 +641,6 @@
           }
           if (cameraBounds != nil){
 
-            // Add failsafe check
-            if (self.mapCtrl == nil || self.mapCtrl.map == nil || self.mapCtrl.map.camera == nil) {
-              NSLog(@"[GoogleMaps] ERROR: Map or camera is null in animation completion block");
-              [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR 
-                                                                messageAsString:@"Map controller is no longer valid"] 
-                                        callbackId:command.callbackId];
-              return;
-            }
-
             GMSCameraPosition *cameraPosition2 = [GMSCameraPosition cameraWithLatitude:self.mapCtrl.map.camera.target.latitude
                                                                              longitude:self.mapCtrl.map.camera.target.longitude
                                                                                   zoom:self.mapCtrl.map.camera.zoom
@@ -659,15 +650,6 @@
             [self.mapCtrl.map setCamera:cameraPosition2];
 
           } else {
-            // Add failsafe check
-            if (self.mapCtrl == nil || self.mapCtrl.map == nil || self.mapCtrl.map.projection == nil) {
-              NSLog(@"[GoogleMaps] ERROR: Map or projection is null in animation completion block");
-              [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR 
-                                                                messageAsString:@"Map controller is no longer valid"] 
-                                        callbackId:command.callbackId];
-              return;
-            }
-
             if (bearing == 0) {
               GMSCoordinateBounds *bounds = [[GMSCoordinateBounds alloc] initWithRegion:self.mapCtrl.map.projection.visibleRegion];
               [self.mapCtrl.map cameraForBounds:bounds insets:paddingUiEdgeInsets];
@@ -690,39 +672,18 @@
         dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
           NSLog(@"[GoogleMaps] First delay callback - creating cameraPosition2");
           
-          // Comprehensive fail-safe check - this is around line 559 where the crash occurs
-          if (self == nil || self.mapCtrl == nil || self.mapCtrl.map == nil || self.mapCtrl.map.camera == nil) {
-            NSLog(@"[GoogleMaps] ERROR: Map controller or camera is null in delayed block!");
-            if (self != nil && self.commandDelegate != nil) {
-              [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR 
-                                                                messageAsString:@"Map controller is no longer valid"] 
+          // Check if map control is still valid
+          if (self.mapCtrl == nil || self.mapCtrl.map == nil) {
+            NSLog(@"[GoogleMaps] ERROR: Map controller is null in delayed block!");
+            [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR 
+                                                                     messageAsString:@"Map controller is no longer valid"] 
                                         callbackId:command.callbackId];
-            }
             return;
           }
           
-          // Store these values in local variables to prevent potential crashes
-          double targetLatitude = 0;
-          double targetLongitude = 0;
-          double currentZoom = 10;  // Default fallback value
-          
-          @try {
-            targetLatitude = self.mapCtrl.map.camera.target.latitude;
-            targetLongitude = self.mapCtrl.map.camera.target.longitude;
-            currentZoom = self.mapCtrl.map.camera.zoom;
-          } @catch (NSException *exception) {
-            NSLog(@"[GoogleMaps] ERROR: Exception accessing camera properties: %@", exception.reason);
-            if (self != nil && self.commandDelegate != nil) {
-              [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR 
-                                                                messageAsString:@"Error accessing camera properties"] 
-                                        callbackId:command.callbackId];
-            }
-            return;
-          }
-          
-          GMSCameraPosition *cameraPosition2 = [GMSCameraPosition cameraWithLatitude:targetLatitude
-                                                                           longitude:targetLongitude
-                                                                                zoom:currentZoom
+          GMSCameraPosition *cameraPosition2 = [GMSCameraPosition cameraWithLatitude:self.mapCtrl.map.camera.target.latitude
+                                                                           longitude:self.mapCtrl.map.camera.target.longitude
+                                                                                zoom:self.mapCtrl.map.camera.zoom
                                                                              bearing:bearing
                                                                         viewingAngle:angle];
           NSLog(@"[GoogleMaps] Created cameraPosition2: %@", cameraPosition2);
@@ -733,15 +694,6 @@
             return;
           }
           
-          // Additional check before setting camera
-          if (self.mapCtrl == nil || self.mapCtrl.map == nil) {
-            NSLog(@"[GoogleMaps] ERROR: Map controller is null before setting camera!");
-            if (self != nil && self.commandDelegate != nil) {
-              [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR] callbackId:command.callbackId];
-            }
-            return;
-          }
-          
           NSLog(@"[GoogleMaps] Setting camera to cameraPosition2");
           [self.mapCtrl.map setCamera:cameraPosition2];
           
@@ -749,38 +701,22 @@
             NSLog(@"[GoogleMaps] Second delay callback - finalizing camera");
             
             // Check again if map control is still valid
-            if (self == nil || self.mapCtrl == nil || self.mapCtrl.map == nil || self.mapCtrl.map.projection == nil) {
+            if (self.mapCtrl == nil || self.mapCtrl.map == nil) {
               NSLog(@"[GoogleMaps] ERROR: Map controller is null in second delayed block!");
-              if (self != nil && self.commandDelegate != nil) {
-                [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR] callbackId:command.callbackId];
-              }
+              [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR] callbackId:command.callbackId];
               return;
             }
             
-            @try {
-              GMSCoordinateBounds *bounds = [[GMSCoordinateBounds alloc] initWithRegion:self.mapCtrl.map.projection.visibleRegion];
-              [self.mapCtrl.map cameraForBounds:bounds insets:paddingUiEdgeInsets];
-              [self.mapCtrl.view setHidden:NO];
-              NSLog(@"[GoogleMaps] moveCamera completed successfully, sending result");
-              if (self != nil && self.commandDelegate != nil) {
-                [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
-              }
-            } @catch (NSException *exception) {
-              NSLog(@"[GoogleMaps] ERROR: Exception in final camera adjustment: %@", exception.reason);
-              if (self != nil && self.commandDelegate != nil) {
-                [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR 
-                                                                  messageAsString:@"Error finalizing camera position"] 
-                                          callbackId:command.callbackId];
-              }
-            }
+            GMSCoordinateBounds *bounds = [[GMSCoordinateBounds alloc] initWithRegion:self.mapCtrl.map.projection.visibleRegion];
+            [self.mapCtrl.map cameraForBounds:bounds insets:paddingUiEdgeInsets];
+            [self.mapCtrl.view setHidden:NO];
+            NSLog(@"[GoogleMaps] moveCamera completed successfully, sending result");
+            [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
           });
         });
       } else {
         NSLog(@"[GoogleMaps] No cameraBounds, completing moveCamera immediately");
-        // Check before finalizing
-        if (self.mapCtrl != nil && self.mapCtrl.view != nil) {
-          [self.mapCtrl.view setHidden:NO];
-        }
+        [self.mapCtrl.view setHidden:NO];
         [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
       }
     }
